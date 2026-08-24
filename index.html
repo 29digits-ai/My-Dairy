@@ -1,0 +1,1569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aegis | Private Journal & Life Tracker</title>
+
+  <!-- Tailwind CSS & FontAwesome Icons -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  
+  <!-- Leaflet Map CSS & JS for Geotagging -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Canvas Confetti for Habit Streaks -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
+
+  <!-- Google Identity Services (GIS) for Google Drive Sync -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50: '#f5f3ff', 100: '#ede9fe', 500: '#8b5cf6', 600: '#7c3aed', 700: '#6d28d9', 900: '#4c1d95' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Caveat:wght@600&display=swap');
+    body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    .font-handwriting { font-family: 'Caveat', cursive; }
+    .washi-tape {
+      background: rgba(254, 240, 138, 0.6);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      transform: rotate(-2deg);
+    }
+    #map { height: 260px; border-radius: 0.75rem; z-index: 10; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex antialiased">
+
+  <!-- ================= AUTH / PIN LOCK SCREEN ================= -->
+  <div id="lockScreen" class="fixed inset-0 bg-slate-950 z-50 flex flex-col items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center">
+      <div class="w-16 h-16 bg-brand-600/20 text-brand-500 rounded-2xl flex items-center justify-center mx-auto mb-5 text-2xl border border-brand-500/30">
+        <i class="fa-solid fa-lock"></i>
+      </div>
+      <h2 class="text-2xl font-bold mb-1 text-white">Private Diary Vault</h2>
+      <p id="lockSubtitle" class="text-slate-400 text-sm mb-6">Enter your 4-digit security PIN</p>
+      
+      <div class="flex justify-center gap-3 mb-6">
+        <input type="password" id="pinInput" maxlength="4" class="w-44 tracking-[1em] text-center text-2xl bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition" placeholder="••••" />
+      </div>
+      <button onclick="handlePinSubmit()" class="w-full bg-brand-600 hover:bg-brand-500 text-white font-semibold py-3 rounded-xl transition shadow-lg shadow-brand-600/30">
+        Unlock Journal
+      </button>
+      <p id="pinError" class="text-rose-400 text-xs mt-3 hidden font-medium">Incorrect PIN. Please try again.</p>
+    </div>
+  </div>
+
+  <!-- ================= SIDEBAR NAVIGATION ================= -->
+  <aside class="w-72 bg-slate-900/90 border-r border-slate-800 p-6 flex flex-col justify-between hidden md:flex shrink-0">
+    <div>
+      <div class="flex items-center gap-3 mb-8 px-2">
+        <div class="w-10 h-10 bg-brand-600 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-brand-600/30">
+          <i class="fa-solid fa-feather-pointed"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg tracking-wide text-white">Aegis Vault</h1>
+          <p class="text-xs text-slate-400">Zero-Cloud Encrypted Diary</p>
+        </div>
+      </div>
+
+      <nav class="space-y-1 text-sm font-medium">
+        <button onclick="switchTab('journal')" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-300 hover:bg-slate-800/80 hover:text-white transition active-tab bg-slate-800 text-white" data-tab="journal">
+          <i class="fa-solid fa-book-open w-5 text-brand-500"></i> Daily Journal
+        </button>
+        <button onclick="switchTab('scrapbook')" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-800/80 hover:text-white transition" data-tab="scrapbook">
+          <i class="fa-solid fa-note-sticky w-5 text-amber-500"></i> Scrapbook Studio
+        </button>
+        <button onclick="switchTab('photos')" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-800/80 hover:text-white transition" data-tab="photos">
+          <i class="fa-solid fa-camera-retro w-5 text-emerald-500"></i> Photo & Map Diary
+        </button>
+        <button onclick="switchTab('habits')" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-800/80 hover:text-white transition" data-tab="habits">
+          <i class="fa-solid fa-fire w-5 text-orange-500"></i> Habit Tracker
+        </button>
+        <button onclick="switchTab('workouts')" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-800/80 hover:text-white transition" data-tab="workouts">
+          <i class="fa-solid fa-dumbbell w-5 text-cyan-500"></i> Workout Tracker
+        </button>
+        <button onclick="switchTab('birthdays')" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-800/80 hover:text-white transition" data-tab="birthdays">
+          <i class="fa-solid fa-cake-candles w-5 text-pink-500"></i> Birthday & Family
+        </button>
+        <button onclick="switchTab('audio')" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-800/80 hover:text-white transition" data-tab="audio">
+          <i class="fa-solid fa-microphone-lines w-5 text-indigo-400"></i> Audio Voice Memos
+        </button>
+        <button onclick="switchTab('calendar')" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-800/80 hover:text-white transition" data-tab="calendar">
+          <i class="fa-regular fa-calendar w-5 text-purple-400"></i> Master Calendar
+        </button>
+      </nav>
+    </div>
+
+    <!-- Data Security / Cloud Sync / Lock -->
+    <div class="pt-4 border-t border-slate-800/80 space-y-2 text-xs">
+      <button onclick="openCloudSyncModal()" class="w-full flex items-center justify-between px-4 py-2.5 rounded-xl bg-gradient-to-r from-brand-900/60 to-cyan-950/60 border border-brand-500/30 hover:border-brand-500 text-brand-300 font-semibold transition">
+        <span><i class="fa-solid fa-cloud-arrow-up mr-2 text-cyan-400"></i> Cloud Sync</span>
+        <span id="cloudStatusDot" class="w-2 h-2 rounded-full bg-slate-600"></span>
+      </button>
+
+      <button onclick="exportData()" class="w-full flex items-center justify-between px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold transition">
+        <span><i class="fa-solid fa-download mr-2"></i> Export JSON</span>
+      </button>
+      <label class="w-full flex items-center justify-between px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold cursor-pointer transition">
+        <span><i class="fa-solid fa-upload mr-2"></i> Import JSON</span>
+        <input type="file" id="importFileInput" onchange="importData(event)" class="hidden" accept=".json" />
+      </label>
+      <button onclick="lockApp()" class="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-rose-400 hover:bg-rose-950/40 transition">
+        <i class="fa-solid fa-lock"></i> Lock Vault
+      </button>
+    </div>
+  </aside>
+
+  <!-- ================= MAIN CONTENT AREA ================= -->
+  <main class="flex-1 p-6 md:p-10 overflow-y-auto max-w-7xl mx-auto w-full">
+
+    <!-- 1. DAILY JOURNAL TAB -->
+    <section id="tab-journal" class="space-y-8">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-3xl font-bold text-white">Daily Journal</h2>
+          <p class="text-slate-400 text-sm">Reflect, record thoughts, track daily gratitude, and mood.</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <input type="date" id="journalDate" class="bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-brand-500" />
+          <button onclick="saveJournalEntry()" class="bg-brand-600 hover:bg-brand-500 text-white font-semibold px-5 py-2.5 rounded-xl text-sm transition shadow-lg shadow-brand-600/30">
+            <i class="fa-solid fa-floppy-disk mr-2"></i> Save Entry
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
+          <input type="text" id="journalTitle" placeholder="Title of the day..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-lg font-semibold text-white focus:outline-none focus:border-brand-500" />
+          
+          <div class="flex flex-wrap items-center gap-4 text-sm bg-slate-950/60 p-4 rounded-xl border border-slate-800/80">
+            <div class="flex items-center gap-2">
+              <span class="text-slate-400">Mood:</span>
+              <select id="journalMood" class="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200">
+                <option value="⚡ Energized">⚡ Energized</option>
+                <option value="😊 Happy" selected>😊 Happy</option>
+                <option value="🌿 Calm">🌿 Calm</option>
+                <option value="🥱 Tired">🥱 Tired</option>
+                <option value="🌧️ Low">🌧️ Low</option>
+              </select>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-slate-400">Weather:</span>
+              <select id="journalWeather" class="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200">
+                <option value="☀️ Sunny">☀️ Sunny</option>
+                <option value="⛅ Partly Cloudy">⛅ Partly Cloudy</option>
+                <option value="🌧️ Rainy">🌧️ Rainy</option>
+                <option value="❄️ Cold">❄️ Cold</option>
+              </select>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-slate-400">Folder:</span>
+              <input type="text" id="journalFolder" placeholder="Personal, Ideas, Work..." class="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200 text-xs w-36" value="Personal" />
+            </div>
+          </div>
+
+          <textarea id="journalContent" rows="10" placeholder="Start writing your thoughts, highlights, learnings today..." class="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-slate-200 focus:outline-none focus:border-brand-500 text-sm leading-relaxed"></textarea>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+              <label class="block text-xs font-semibold text-brand-400 uppercase tracking-wider mb-2"><i class="fa-solid fa-heart mr-1"></i> 3 Things I am Grateful For</label>
+              <textarea id="journalGratitude" rows="2" placeholder="1. Morning coffee&#10;2. Progress on project&#10;3. Good conversation" class="w-full bg-transparent text-xs text-slate-300 focus:outline-none resize-none"></textarea>
+            </div>
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+              <label class="block text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-2"><i class="fa-solid fa-bullseye mr-1"></i> Tomorrow's Main Goal</label>
+              <textarea id="journalGoal" rows="2" placeholder="What will make tomorrow a win?" class="w-full bg-transparent text-xs text-slate-300 focus:outline-none resize-none"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- Saved Entries List -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col h-[640px]">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-bold text-white text-base">Past Entries</h3>
+            <span id="journalCountBadge" class="bg-brand-900/60 text-brand-300 text-xs px-2.5 py-1 rounded-full font-medium">0 Entries</span>
+          </div>
+          <div id="journalList" class="flex-1 overflow-y-auto space-y-3 pr-1"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. SCRAPBOOK STUDIO TAB -->
+    <section id="tab-scrapbook" class="space-y-8 hidden">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-3xl font-bold text-white">Scrapbook Studio</h2>
+          <p class="text-slate-400 text-sm">Pin Polaroid snapshots, vintage washi notes, stickers, and memory cards.</p>
+        </div>
+        <button onclick="openScrapbookModal()" class="bg-amber-600 hover:bg-amber-500 text-white font-semibold px-5 py-2.5 rounded-xl text-sm transition shadow-lg shadow-amber-600/30">
+          <i class="fa-solid fa-plus mr-2"></i> Add Scrapbook Memory
+        </button>
+      </div>
+
+      <div id="scrapbookGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"></div>
+    </section>
+
+    <!-- 3. PHOTO & MAP GEOTAG DIARY TAB -->
+    <section id="tab-photos" class="space-y-8 hidden">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-3xl font-bold text-white">Photo Diary & Geotagger</h2>
+          <p class="text-slate-400 text-sm">Capture places, attach quotes, tag GPS locations, and share instantly.</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+          <h3 class="font-bold text-white">New Photo Entry</h3>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase mb-2">Upload Photo</label>
+            <input type="file" id="photoFileInput" accept="image/*" class="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-brand-600 file:text-white hover:file:bg-brand-500 cursor-pointer" />
+            <div id="photoPreviewContainer" class="mt-3 hidden">
+              <img id="photoPreview" class="w-full h-44 object-cover rounded-xl border border-slate-800" alt="Preview" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Date</label>
+            <input type="date" id="photoDate" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Quote / Caption</label>
+            <input type="text" id="photoQuote" placeholder="“A golden sunset in the mountains...”" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Personal Note</label>
+            <textarea id="photoDesc" rows="2" placeholder="Write the backstory or who you were with..." class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-200"></textarea>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Tag Location (Click Map)</label>
+            <input type="text" id="photoLocationName" placeholder="Location Name (e.g. Kyoto, Japan)" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 mb-2" />
+            <div id="map"></div>
+            <input type="hidden" id="photoLat" />
+            <input type="hidden" id="photoLng" />
+          </div>
+          <button onclick="savePhotoEntry()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 rounded-xl text-sm transition shadow-lg shadow-emerald-600/30">
+            <i class="fa-solid fa-cloud-arrow-up mr-2"></i> Save Photo Memory
+          </button>
+        </div>
+
+        <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6">
+          <h3 class="font-bold text-white mb-4">Photo Vault</h3>
+          <div id="photoGallery" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. HABIT TRACKER TAB -->
+    <section id="tab-habits" class="space-y-8 hidden">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-3xl font-bold text-white">Habit & Routine Tracker</h2>
+          <p class="text-slate-400 text-sm">Build streaks, stay consistent, and celebrate daily victories.</p>
+        </div>
+        <div class="flex gap-2">
+          <input type="text" id="newHabitTitle" placeholder="e.g. Read 20 mins, Meditation..." class="bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-orange-500" />
+          <button onclick="addHabit()" class="bg-orange-600 hover:bg-orange-500 text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition shadow-lg shadow-orange-600/30">
+            <i class="fa-solid fa-plus mr-1"></i> Add Habit
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead>
+            <tr class="border-b border-slate-800 text-slate-400">
+              <th class="py-3 px-4">Habit</th>
+              <th class="py-3 px-4 text-center">Streak</th>
+              <th class="py-3 px-4 text-center">Mon</th>
+              <th class="py-3 px-4 text-center">Tue</th>
+              <th class="py-3 px-4 text-center">Wed</th>
+              <th class="py-3 px-4 text-center">Thu</th>
+              <th class="py-3 px-4 text-center">Fri</th>
+              <th class="py-3 px-4 text-center">Sat</th>
+              <th class="py-3 px-4 text-center">Sun</th>
+              <th class="py-3 px-4 text-center">Action</th>
+            </tr>
+          </thead>
+          <tbody id="habitsTableBody" class="divide-y divide-slate-800/60"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 5. WORKOUT TRACKER TAB -->
+    <section id="tab-workouts" class="space-y-8 hidden">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-3xl font-bold text-white">Workout & Fitness Log</h2>
+          <p class="text-slate-400 text-sm">Track sets, reps, weight (kg), cardio, and personal records.</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+          <h3 class="font-bold text-white">Log Workout Session</h3>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Date</label>
+            <input type="date" id="workoutDate" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Exercise Name</label>
+            <input type="text" id="workoutExercise" placeholder="e.g. Bench Press, Squat, 5km Run" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Muscle Group / Category</label>
+            <select id="workoutCategory" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200">
+              <option value="Chest & Triceps">Chest & Triceps</option>
+              <option value="Back & Biceps">Back & Biceps</option>
+              <option value="Legs & Glutes">Legs & Glutes</option>
+              <option value="Shoulders & Arms">Shoulders & Arms</option>
+              <option value="Cardio & HIIT">Cardio & HIIT</option>
+              <option value="Kickboxing & Martial Arts">Kickboxing & Martial Arts</option>
+              <option value="Core & Abs">Core & Abs</option>
+            </select>
+          </div>
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Sets</label>
+              <input type="number" id="workoutSets" placeholder="4" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Reps/Min</label>
+              <input type="number" id="workoutReps" placeholder="10" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Weight (kg)</label>
+              <input type="number" id="workoutWeight" placeholder="75" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Notes</label>
+            <textarea id="workoutNotes" rows="2" placeholder="Felt strong, increase weight next session..." class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-200"></textarea>
+          </div>
+          <button onclick="saveWorkout()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-semibold py-3 rounded-xl text-sm transition shadow-lg shadow-cyan-600/30">
+            <i class="fa-solid fa-plus mr-1"></i> Add Workout Entry
+          </button>
+        </div>
+
+        <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6">
+          <h3 class="font-bold text-white mb-4">Recent Workouts</h3>
+          <div id="workoutList" class="space-y-3 max-h-[600px] overflow-y-auto pr-1"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. BIRTHDAY & RELATIONSHIP JOURNAL TAB -->
+    <section id="tab-birthdays" class="space-y-8 hidden">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-3xl font-bold text-white">Birthdays & Loved Ones</h2>
+          <p class="text-slate-400 text-sm">Keep memories, gift wishlists, and upcoming birthday countdowns.</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+          <h3 class="font-bold text-white">Add Person</h3>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Name</label>
+            <input type="text" id="bdayName" placeholder="Alex Johnson" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200" />
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Relationship</label>
+              <select id="bdayRelation" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200">
+                <option value="Family">Family</option>
+                <option value="Best Friend">Best Friend</option>
+                <option value="Partner">Partner</option>
+                <option value="Friend">Friend</option>
+                <option value="Colleague">Colleague</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Birthdate</label>
+              <input type="date" id="bdayDate" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Gift Ideas & Interests</label>
+            <input type="text" id="bdayGiftIdeas" placeholder="Loves mechanical keyboards, espresso..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Photo</label>
+            <input type="file" id="bdayPhotoInput" accept="image/*" class="w-full text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-pink-600 file:text-white" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Notes & Memories</label>
+            <textarea id="bdayNotes" rows="2" placeholder="Met in college 2021, favorite cafe..." class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-200"></textarea>
+          </div>
+          <button onclick="saveBirthdayPerson()" class="w-full bg-pink-600 hover:bg-pink-500 text-white font-semibold py-3 rounded-xl text-sm transition shadow-lg shadow-pink-600/30">
+            <i class="fa-solid fa-user-plus mr-1"></i> Save to Rolodex
+          </button>
+        </div>
+
+        <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6">
+          <h3 class="font-bold text-white mb-4">Friends & Family Roster</h3>
+          <div id="birthdayCardsGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. AUDIO VOICE MEMOS TAB -->
+    <section id="tab-audio" class="space-y-8 hidden">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-3xl font-bold text-white">Audio Voice Memos</h2>
+          <p class="text-slate-400 text-sm">Speak your mind when writing isn't fast enough. Stored privately.</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center space-y-5">
+          <h3 class="font-bold text-white text-left">Record Voice Journal</h3>
+          <div class="py-8">
+            <button id="recordBtn" onclick="toggleAudioRecording()" class="w-24 h-24 rounded-full bg-rose-600 hover:bg-rose-500 text-white text-3xl flex items-center justify-center mx-auto shadow-xl shadow-rose-600/30 transition active:scale-95">
+              <i id="recordIcon" class="fa-solid fa-microphone"></i>
+            </button>
+            <p id="recordTimer" class="text-slate-400 text-sm mt-4 font-mono font-bold">00:00</p>
+            <p id="recordStatus" class="text-xs text-slate-500 mt-1">Click to start voice recording</p>
+          </div>
+
+          <input type="text" id="audioMemoTitle" placeholder="Memo Title (e.g. Midnight thoughts)" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200" />
+          
+          <div id="audioPlaybackBox" class="hidden space-y-3">
+            <audio id="audioPreview" controls class="w-full"></audio>
+            <button onclick="saveAudioMemo()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 rounded-xl text-sm transition">
+              <i class="fa-solid fa-floppy-disk mr-1"></i> Save Memo
+            </button>
+          </div>
+        </div>
+
+        <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6">
+          <h3 class="font-bold text-white mb-4">Saved Voice Journals</h3>
+          <div id="audioMemosList" class="space-y-3 max-h-[600px] overflow-y-auto"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8. MASTER CALENDAR TAB -->
+    <section id="tab-calendar" class="space-y-8 hidden">
+      <div>
+        <h2 class="text-3xl font-bold text-white">Master Diary Calendar</h2>
+        <p class="text-slate-400 text-sm">Visualize all your journal logs, workouts, and birthdays on any date.</p>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+        <div class="flex items-center justify-between mb-6">
+          <button onclick="changeMonth(-1)" class="p-2 text-slate-400 hover:text-white"><i class="fa-solid fa-chevron-left"></i></button>
+          <h3 id="calendarMonthYear" class="text-lg font-bold text-white">Month Year</h3>
+          <button onclick="changeMonth(1)" class="p-2 text-slate-400 hover:text-white"><i class="fa-solid fa-chevron-right"></i></button>
+        </div>
+        <div class="grid grid-cols-7 gap-2 text-center text-xs font-semibold text-slate-500 mb-2">
+          <span>SUN</span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span>
+        </div>
+        <div id="calendarDaysGrid" class="grid grid-cols-7 gap-2"></div>
+      </div>
+
+      <div id="calendarDayDetails" class="bg-slate-900 border border-slate-800 rounded-2xl p-6 hidden">
+        <h3 id="selectedDateTitle" class="font-bold text-white mb-3 text-lg">Activity for Date</h3>
+        <div id="selectedDateContent" class="space-y-3 text-sm text-slate-300"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ================= CLOUD SYNC MODAL (GOOGLE DRIVE & DROPBOX) ================= -->
+  <div id="cloudSyncModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 max-w-xl w-full space-y-6 shadow-2xl">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-cyan-600/20 text-cyan-400 border border-cyan-500/30 flex items-center justify-center text-lg">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-white text-lg">Cloud Sync & Remote Backup</h3>
+            <p class="text-xs text-slate-400">Sync <code class="text-cyan-400">aegis_diary_backup.json</code> to your private cloud storage</p>
+          </div>
+        </div>
+        <button onclick="closeCloudSyncModal()" class="text-slate-400 hover:text-white p-2 text-lg"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <!-- Provider Tabs -->
+      <div class="flex gap-2 p-1 bg-slate-950 rounded-xl border border-slate-800 text-xs font-semibold">
+        <button id="cloudTabGdriveBtn" onclick="switchCloudTab('gdrive')" class="flex-1 py-2 rounded-lg bg-brand-600 text-white flex items-center justify-center gap-2">
+          <i class="fa-brands fa-google-drive"></i> Google Drive
+        </button>
+        <button id="cloudTabDropboxBtn" onclick="switchCloudTab('dropbox')" class="flex-1 py-2 rounded-lg text-slate-400 hover:text-white flex items-center justify-center gap-2">
+          <i class="fa-brands fa-dropbox"></i> Dropbox
+        </button>
+      </div>
+
+      <!-- GOOGLE DRIVE SECTION -->
+      <div id="gdriveSection" class="space-y-4">
+        <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Google OAuth Client ID</label>
+            <input type="text" id="gdriveClientId" placeholder="e.g. 123456789-xxxx.apps.googleusercontent.com" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-brand-500" />
+            <p class="text-[11px] text-slate-500 mt-1">Get this free from Google Cloud Console (APIs & Services > Credentials).</p>
+          </div>
+          <button onclick="initGoogleAuth()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-2">
+            <i class="fa-brands fa-google text-rose-400"></i> Connect Google Account
+          </button>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <button onclick="pushBackupToGoogleDrive()" class="bg-cyan-600 hover:bg-cyan-500 text-white font-semibold py-3 rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/30">
+            <i class="fa-solid fa-cloud-arrow-up"></i> Upload Backup
+          </button>
+          <button onclick="pullBackupFromGoogleDrive()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-3 rounded-xl text-xs transition flex items-center justify-center gap-2 border border-slate-700">
+            <i class="fa-solid fa-cloud-arrow-down"></i> Restore from Drive
+          </button>
+        </div>
+      </div>
+
+      <!-- DROPBOX SECTION -->
+      <div id="dropboxSection" class="space-y-4 hidden">
+        <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Dropbox Generated Access Token</label>
+            <input type="password" id="dropboxToken" placeholder="sl.xxxxxxxxxxxxxxxxxxxxxxxx..." class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500" />
+            <p class="text-[11px] text-slate-500 mt-1">Generate in your Dropbox App Console under "Generated access token".</p>
+          </div>
+          <button onclick="saveDropboxToken()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-2 rounded-xl text-xs transition">
+            Save Dropbox Token
+          </button>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <button onclick="pushBackupToDropbox()" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30">
+            <i class="fa-solid fa-cloud-arrow-up"></i> Push to Dropbox
+          </button>
+          <button onclick="pullBackupFromDropbox()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-3 rounded-xl text-xs transition flex items-center justify-center gap-2 border border-slate-700">
+            <i class="fa-solid fa-cloud-arrow-down"></i> Restore from Dropbox
+          </button>
+        </div>
+      </div>
+
+      <!-- Status banner -->
+      <div id="cloudSyncStatus" class="text-xs text-center p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 text-slate-400">
+        Ready to sync. Last synced: <span id="lastSyncedTime" class="text-white font-medium">Never</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= SCRAPBOOK MODAL ================= -->
+  <div id="scrapbookModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-lg w-full space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="font-bold text-white text-lg">New Scrapbook Memory Card</h3>
+        <button onclick="closeScrapbookModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Memory Photo</label>
+        <input type="file" id="scrapbookFileInput" accept="image/*" class="w-full text-xs text-slate-400" />
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Card Note / Memory</label>
+        <textarea id="scrapbookText" rows="3" placeholder="Handwritten note memory..." class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-200"></textarea>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Sticker / Badge</label>
+          <select id="scrapbookSticker" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200">
+            <option value="✨ Magic">✨ Magic</option>
+            <option value="☕ Cozy">☕ Cozy</option>
+            <option value="✈️ Wanderlust">✈️ Wanderlust</option>
+            <option value="🌸 Vintage">🌸 Vintage</option>
+            <option value="🔥 Energy">🔥 Energy</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Date</label>
+          <input type="date" id="scrapbookDate" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200" />
+        </div>
+      </div>
+      <button onclick="saveScrapbookItem()" class="w-full bg-amber-600 hover:bg-amber-500 text-white font-semibold py-3 rounded-xl text-sm transition">
+        Pin to Scrapbook
+      </button>
+    </div>
+  </div>
+
+  <!-- ================= JAVASCRIPT ENGINE & CLOUD SYNC ================= -->
+  <script>
+    let mapInstance = null;
+    let mapMarker = null;
+    let currentCalDate = new Date();
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let recordedAudioBase64 = null;
+    let recordInterval = null;
+    let recordSeconds = 0;
+
+    // Google & Dropbox State
+    let gdriveTokenClient = null;
+    let gdriveAccessToken = null;
+
+    const DB = {
+      PIN: 'aegis_pin',
+      JOURNAL: 'aegis_journal',
+      SCRAPBOOK: 'aegis_scrapbook',
+      PHOTOS: 'aegis_photos',
+      HABITS: 'aegis_habits',
+      WORKOUTS: 'aegis_workouts',
+      BIRTHDAYS: 'aegis_birthdays',
+      AUDIO: 'aegis_audio',
+      G_CLIENT_ID: 'aegis_gdrive_client_id',
+      DROPBOX_TOKEN: 'aegis_dropbox_token',
+      LAST_SYNC: 'aegis_last_synced'
+    };
+
+    function load(key, defaultVal = []) {
+      try {
+        const val = localStorage.getItem(key);
+        return val ? JSON.parse(val) : defaultVal;
+      } catch (e) { return defaultVal; }
+    }
+
+    function save(key, val) {
+      localStorage.setItem(key, JSON.stringify(val));
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const todayStr = new Date().toISOString().split('T')[0];
+      document.getElementById('journalDate').value = todayStr;
+      document.getElementById('photoDate').value = todayStr;
+      document.getElementById('workoutDate').value = todayStr;
+      document.getElementById('scrapbookDate').value = todayStr;
+
+      const savedPin = localStorage.getItem(DB.PIN);
+      if (!savedPin) {
+        document.getElementById('lockSubtitle').innerText = "Create your new 4-digit PIN for first-time setup";
+      }
+
+      // Restore credentials into fields
+      const savedGId = localStorage.getItem(DB.G_CLIENT_ID);
+      if (savedGId) document.getElementById('gdriveClientId').value = savedGId;
+      const savedDbx = localStorage.getItem(DB.DROPBOX_TOKEN);
+      if (savedDbx) document.getElementById('dropboxToken').value = savedDbx;
+
+      const lastSync = localStorage.getItem(DB.LAST_SYNC);
+      if (lastSync) {
+        document.getElementById('lastSyncedTime').innerText = lastSync;
+        document.getElementById('cloudStatusDot').classList.replace('bg-slate-600', 'bg-emerald-400');
+      }
+
+      renderJournalList();
+      renderScrapbook();
+      renderPhotos();
+      renderHabits();
+      renderWorkouts();
+      renderBirthdays();
+      renderAudioMemos();
+      renderCalendar();
+      initMap();
+    });
+
+    // ================= PIN LOCK =================
+    function handlePinSubmit() {
+      const pin = document.getElementById('pinInput').value.trim();
+      const savedPin = localStorage.getItem(DB.PIN);
+
+      if (pin.length !== 4) {
+        showPinError("PIN must be 4 digits.");
+        return;
+      }
+
+      if (!savedPin) {
+        localStorage.setItem(DB.PIN, pin);
+        unlock();
+      } else if (savedPin === pin) {
+        unlock();
+      } else {
+        showPinError("Incorrect PIN. Please try again.");
+      }
+    }
+
+    function showPinError(msg) {
+      const err = document.getElementById('pinError');
+      err.innerText = msg;
+      err.classList.remove('hidden');
+    }
+
+    function unlock() {
+      document.getElementById('lockScreen').classList.add('hidden');
+      document.getElementById('pinInput').value = '';
+      document.getElementById('pinError').classList.add('hidden');
+    }
+
+    function lockApp() {
+      document.getElementById('lockScreen').classList.remove('hidden');
+    }
+
+    // ================= CLOUD SYNC CONTROLLERS =================
+    function openCloudSyncModal() {
+      document.getElementById('cloudSyncModal').classList.remove('hidden');
+    }
+
+    function closeCloudSyncModal() {
+      document.getElementById('cloudSyncModal').classList.add('hidden');
+    }
+
+    function switchCloudTab(provider) {
+      const gBtn = document.getElementById('cloudTabGdriveBtn');
+      const dBtn = document.getElementById('cloudTabDropboxBtn');
+      const gSec = document.getElementById('gdriveSection');
+      const dSec = document.getElementById('dropboxSection');
+
+      if (provider === 'gdrive') {
+        gBtn.className = "flex-1 py-2 rounded-lg bg-brand-600 text-white flex items-center justify-center gap-2";
+        dBtn.className = "flex-1 py-2 rounded-lg text-slate-400 hover:text-white flex items-center justify-center gap-2";
+        gSec.classList.remove('hidden');
+        dSec.classList.add('hidden');
+      } else {
+        dBtn.className = "flex-1 py-2 rounded-lg bg-blue-600 text-white flex items-center justify-center gap-2";
+        gBtn.className = "flex-1 py-2 rounded-lg text-slate-400 hover:text-white flex items-center justify-center gap-2";
+        dSec.classList.remove('hidden');
+        gSec.classList.add('hidden');
+      }
+    }
+
+    function updateSyncStatus(msg, isSuccess = true) {
+      const el = document.getElementById('cloudSyncStatus');
+      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      el.innerHTML = `${isSuccess ? '✅' : '⚠️'} ${msg} • Last: <span class="text-white font-medium">${timeStr}</span>`;
+      if (isSuccess) {
+        localStorage.setItem(DB.LAST_SYNC, timeStr);
+        document.getElementById('lastSyncedTime').innerText = timeStr;
+        document.getElementById('cloudStatusDot').classList.replace('bg-slate-600', 'bg-emerald-400');
+      }
+    }
+
+    function getFullBackupPayload() {
+      return {
+        pin: localStorage.getItem(DB.PIN),
+        journal: load(DB.JOURNAL),
+        scrapbook: load(DB.SCRAPBOOK),
+        photos: load(DB.PHOTOS),
+        habits: load(DB.HABITS),
+        workouts: load(DB.WORKOUTS),
+        birthdays: load(DB.BIRTHDAYS),
+        audio: load(DB.AUDIO),
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    function restoreFromBackupObject(d) {
+      if (d.pin) localStorage.setItem(DB.PIN, d.pin);
+      if (d.journal) save(DB.JOURNAL, d.journal);
+      if (d.scrapbook) save(DB.SCRAPBOOK, d.scrapbook);
+      if (d.photos) save(DB.PHOTOS, d.photos);
+      if (d.habits) save(DB.HABITS, d.habits);
+      if (d.workouts) save(DB.WORKOUTS, d.workouts);
+      if (d.birthdays) save(DB.BIRTHDAYS, d.birthdays);
+      if (d.audio) save(DB.AUDIO, d.audio);
+
+      renderJournalList();
+      renderScrapbook();
+      renderPhotos();
+      renderHabits();
+      renderWorkouts();
+      renderBirthdays();
+      renderAudioMemos();
+      renderCalendar();
+    }
+
+    // --- GOOGLE DRIVE INTEGRATION ---
+    function initGoogleAuth() {
+      const clientId = document.getElementById('gdriveClientId').value.trim();
+      if (!clientId) {
+        alert("Please enter a valid Google OAuth Client ID.");
+        return;
+      }
+      localStorage.setItem(DB.G_CLIENT_ID, clientId);
+
+      try {
+        gdriveTokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: clientId,
+          scope: 'https://www.googleapis.com/auth/drive.file',
+          callback: (response) => {
+            if (response.error !== undefined) {
+              updateSyncStatus(`Google Auth Error: ${response.error}`, false);
+              return;
+            }
+            gdriveAccessToken = response.access_token;
+            updateSyncStatus("Google Drive connected successfully!");
+          }
+        });
+        gdriveTokenClient.requestAccessToken({ prompt: 'consent' });
+      } catch (err) {
+        alert("Could not initialize Google Identity Client. Verify your Client ID.");
+      }
+    }
+
+    async function pushBackupToGoogleDrive() {
+      if (!gdriveAccessToken) {
+        initGoogleAuth();
+        return;
+      }
+      updateSyncStatus("Uploading to Google Drive...");
+      const backupData = JSON.stringify(getFullBackupPayload(), null, 2);
+
+      try {
+        // Search if aegis_diary_backup.json already exists
+        const searchRes = await fetch("https://www.googleapis.com/drive/v3/files?q=name='aegis_diary_backup.json' and trashed=false", {
+          headers: { 'Authorization': `Bearer ${gdriveAccessToken}` }
+        });
+        const searchJson = await searchRes.json();
+        const existingFile = searchJson.files && searchJson.files[0];
+
+        if (existingFile) {
+          // Update existing file
+          await fetch(`https://www.googleapis.com/upload/drive/v3/files/${existingFile.id}?uploadType=media`, {
+            method: 'PATCH',
+            headers: {
+              'Authorization': `Bearer ${gdriveAccessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: backupData
+          });
+        } else {
+          // Create new multipart file
+          const metadata = { name: 'aegis_diary_backup.json', mimeType: 'application/json' };
+          const form = new FormData();
+          form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+          form.append('file', new Blob([backupData], { type: 'application/json' }));
+
+          await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${gdriveAccessToken}` },
+            body: form
+          });
+        }
+        updateSyncStatus("Successfully backed up to Google Drive!");
+      } catch (e) {
+        updateSyncStatus("Failed to upload to Google Drive.", false);
+      }
+    }
+
+    async function pullBackupFromGoogleDrive() {
+      if (!gdriveAccessToken) {
+        initGoogleAuth();
+        return;
+      }
+      updateSyncStatus("Checking Google Drive for backup...");
+      try {
+        const searchRes = await fetch("https://www.googleapis.com/drive/v3/files?q=name='aegis_diary_backup.json' and trashed=false", {
+          headers: { 'Authorization': `Bearer ${gdriveAccessToken}` }
+        });
+        const searchJson = await searchRes.json();
+        const existingFile = searchJson.files && searchJson.files[0];
+
+        if (!existingFile) {
+          updateSyncStatus("No backup file found in your Google Drive.", false);
+          return;
+        }
+
+        const downloadRes = await fetch(`https://www.googleapis.com/drive/v3/files/${existingFile.id}?alt=media`, {
+          headers: { 'Authorization': `Bearer ${gdriveAccessToken}` }
+        });
+        const data = await downloadRes.json();
+        restoreFromBackupObject(data);
+        updateSyncStatus("Restored successfully from Google Drive!");
+      } catch (e) {
+        updateSyncStatus("Failed to restore from Google Drive.", false);
+      }
+    }
+
+    // --- DROPBOX INTEGRATION ---
+    function saveDropboxToken() {
+      const token = document.getElementById('dropboxToken').value.trim();
+      if (!token) return alert("Please enter your Dropbox Access Token.");
+      localStorage.setItem(DB.DROPBOX_TOKEN, token);
+      updateSyncStatus("Dropbox token saved!");
+    }
+
+    async function pushBackupToDropbox() {
+      const token = localStorage.getItem(DB.DROPBOX_TOKEN) || document.getElementById('dropboxToken').value.trim();
+      if (!token) return alert("Please enter and save your Dropbox token first.");
+
+      updateSyncStatus("Uploading to Dropbox...");
+      const backupData = JSON.stringify(getFullBackupPayload(), null, 2);
+
+      try {
+        const res = await fetch('https://content.dropboxapi.com/2/files/upload', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Dropbox-API-Arg': JSON.stringify({
+              path: '/aegis_diary_backup.json',
+              mode: 'overwrite',
+              autorename: false,
+              mute: false
+            }),
+            'Content-Type': 'application/octet-stream'
+          },
+          body: backupData
+        });
+
+        if (res.ok) {
+          updateSyncStatus("Successfully pushed backup to Dropbox!");
+        } else {
+          const err = await res.json();
+          updateSyncStatus(`Dropbox Error: ${err.error_summary || 'Failed'}`, false);
+        }
+      } catch (err) {
+        updateSyncStatus("Network error connecting to Dropbox.", false);
+      }
+    }
+
+    async function pullBackupFromDropbox() {
+      const token = localStorage.getItem(DB.DROPBOX_TOKEN) || document.getElementById('dropboxToken').value.trim();
+      if (!token) return alert("Please enter your Dropbox token.");
+
+      updateSyncStatus("Downloading backup from Dropbox...");
+      try {
+        const res = await fetch('https://content.dropboxapi.com/2/files/download', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Dropbox-API-Arg': JSON.stringify({ path: '/aegis_diary_backup.json' })
+          }
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          restoreFromBackupObject(data);
+          updateSyncStatus("Restored successfully from Dropbox!");
+        } else {
+          updateSyncStatus("No backup file found in your Dropbox.", false);
+        }
+      } catch (err) {
+        updateSyncStatus("Failed to restore from Dropbox.", false);
+      }
+    }
+
+    // ================= TABS SWITCHER =================
+    function switchTab(tabId) {
+      document.querySelectorAll('main > section').forEach(sec => sec.classList.add('hidden'));
+      document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+      
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        if (btn.dataset.tab === tabId) {
+          btn.classList.add('bg-slate-800', 'text-white');
+          btn.classList.remove('text-slate-400');
+        } else {
+          btn.classList.remove('bg-slate-800', 'text-white');
+          btn.classList.add('text-slate-400');
+        }
+      });
+
+      if (tabId === 'photos' && mapInstance) {
+        setTimeout(() => mapInstance.invalidateSize(), 200);
+      }
+    }
+
+    // ================= DAILY JOURNAL =================
+    function saveJournalEntry() {
+      const title = document.getElementById('journalTitle').value.trim();
+      const content = document.getElementById('journalContent').value.trim();
+      const date = document.getElementById('journalDate').value;
+      const mood = document.getElementById('journalMood').value;
+      const weather = document.getElementById('journalWeather').value;
+      const folder = document.getElementById('journalFolder').value.trim() || 'Personal';
+      const gratitude = document.getElementById('journalGratitude').value.trim();
+      const goal = document.getElementById('journalGoal').value.trim();
+
+      if (!title || !content) {
+        alert("Please provide both a title and content.");
+        return;
+      }
+
+      const entries = load(DB.JOURNAL);
+      entries.unshift({ id: Date.now(), date, title, content, mood, weather, folder, gratitude, goal });
+      save(DB.JOURNAL, entries);
+
+      document.getElementById('journalTitle').value = '';
+      document.getElementById('journalContent').value = '';
+      document.getElementById('journalGratitude').value = '';
+      document.getElementById('journalGoal').value = '';
+
+      renderJournalList();
+      renderCalendar();
+    }
+
+    function renderJournalList() {
+      const entries = load(DB.JOURNAL);
+      const container = document.getElementById('journalList');
+      document.getElementById('journalCountBadge').innerText = `${entries.length} Entries`;
+
+      if (entries.length === 0) {
+        container.innerHTML = `<p class="text-xs text-slate-500 text-center py-10">No journal entries yet.</p>`;
+        return;
+      }
+
+      container.innerHTML = entries.map(item => `
+        <div class="bg-slate-950/80 p-4 rounded-xl border border-slate-800 hover:border-slate-700 transition">
+          <div class="flex items-center justify-between text-xs text-slate-400 mb-1.5">
+            <span class="font-medium text-brand-400">${item.date} • ${item.folder}</span>
+            <span>${item.mood} ${item.weather}</span>
+          </div>
+          <h4 class="font-bold text-white text-sm mb-1">${escapeHtml(item.title)}</h4>
+          <p class="text-xs text-slate-300 line-clamp-2 mb-3 leading-relaxed">${escapeHtml(item.content)}</p>
+          <div class="flex items-center justify-between pt-2 border-t border-slate-800/60 text-xs">
+            <span class="text-slate-500 text-[10px]">${item.gratitude ? '❤️ Has Gratitude' : ''}</span>
+            <button onclick="deleteEntry('${DB.JOURNAL}', ${item.id})" class="text-rose-400 hover:text-rose-300">
+              <i class="fa-solid fa-trash-can"></i>
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // ================= SCRAPBOOK =================
+    function openScrapbookModal() { document.getElementById('scrapbookModal').classList.remove('hidden'); }
+    function closeScrapbookModal() { document.getElementById('scrapbookModal').classList.add('hidden'); }
+
+    async function saveScrapbookItem() {
+      const fileInput = document.getElementById('scrapbookFileInput');
+      const text = document.getElementById('scrapbookText').value.trim();
+      const sticker = document.getElementById('scrapbookSticker').value;
+      const date = document.getElementById('scrapbookDate').value;
+
+      let photoBase64 = '';
+      if (fileInput.files && fileInput.files[0]) {
+        photoBase64 = await toBase64(fileInput.files[0]);
+      }
+
+      const items = load(DB.SCRAPBOOK);
+      items.unshift({ id: Date.now(), photo: photoBase64, text, sticker, date });
+      save(DB.SCRAPBOOK, items);
+      closeScrapbookModal();
+      document.getElementById('scrapbookText').value = '';
+      document.getElementById('scrapbookFileInput').value = '';
+      renderScrapbook();
+    }
+
+    function renderScrapbook() {
+      const items = load(DB.SCRAPBOOK);
+      const grid = document.getElementById('scrapbookGrid');
+
+      if (items.length === 0) {
+        grid.innerHTML = `<div class="col-span-full text-center py-12 text-slate-500 text-sm">Your scrapbook is empty. Pin your first Polaroid or memory!</div>`;
+        return;
+      }
+
+      grid.innerHTML = items.map(item => `
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 relative overflow-hidden group shadow-lg">
+          <div class="washi-tape px-3 py-0.5 text-xs text-slate-900 font-bold uppercase rounded-sm inline-block mb-3">
+            ${item.sticker}
+          </div>
+          ${item.photo ? `<img src="${item.photo}" class="w-full h-48 object-cover rounded-xl mb-3 border border-slate-800" />` : ''}
+          <p class="font-handwriting text-lg text-amber-200 leading-snug mb-3">"${escapeHtml(item.text)}"</p>
+          <div class="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-800/80">
+            <span>${item.date}</span>
+            <button onclick="deleteEntry('${DB.SCRAPBOOK}', ${item.id})" class="text-rose-400 hover:text-rose-300">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // ================= PHOTOS & MAP =================
+    function initMap() {
+      mapInstance = L.map('map').setView([20.5937, 78.9629], 4);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap'
+      }).addTo(mapInstance);
+
+      mapInstance.on('click', function(e) {
+        const { lat, lng } = e.latlng;
+        document.getElementById('photoLat').value = lat.toFixed(5);
+        document.getElementById('photoLng').value = lng.toFixed(5);
+
+        if (mapMarker) mapInstance.removeLayer(mapMarker);
+        mapMarker = L.marker([lat, lng]).addTo(mapInstance);
+      });
+    }
+
+    document.getElementById('photoFileInput').addEventListener('change', async function() {
+      if (this.files && this.files[0]) {
+        const b64 = await toBase64(this.files[0]);
+        document.getElementById('photoPreview').src = b64;
+        document.getElementById('photoPreviewContainer').classList.remove('hidden');
+      }
+    });
+
+    async function savePhotoEntry() {
+      const fileInput = document.getElementById('photoFileInput');
+      const date = document.getElementById('photoDate').value;
+      const quote = document.getElementById('photoQuote').value.trim();
+      const desc = document.getElementById('photoDesc').value.trim();
+      const locationName = document.getElementById('photoLocationName').value.trim();
+      const lat = document.getElementById('photoLat').value;
+      const lng = document.getElementById('photoLng').value;
+
+      if (!fileInput.files || !fileInput.files[0]) {
+        alert("Please choose a photo to upload.");
+        return;
+      }
+
+      const photoBase64 = await toBase64(fileInput.files[0]);
+      const photos = load(DB.PHOTOS);
+      photos.unshift({ id: Date.now(), photo: photoBase64, date, quote, desc, locationName, lat, lng });
+      save(DB.PHOTOS, photos);
+
+      document.getElementById('photoFileInput').value = '';
+      document.getElementById('photoQuote').value = '';
+      document.getElementById('photoDesc').value = '';
+      document.getElementById('photoLocationName').value = '';
+      document.getElementById('photoPreviewContainer').classList.add('hidden');
+      if (mapMarker) mapInstance.removeLayer(mapMarker);
+
+      renderPhotos();
+    }
+
+    function renderPhotos() {
+      const photos = load(DB.PHOTOS);
+      const container = document.getElementById('photoGallery');
+
+      if (photos.length === 0) {
+        container.innerHTML = `<div class="col-span-full text-center py-12 text-slate-500 text-sm">No photos saved yet.</div>`;
+        return;
+      }
+
+      container.innerHTML = photos.map(p => `
+        <div class="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden p-4 space-y-3">
+          <img src="${p.photo}" class="w-full h-48 object-cover rounded-xl border border-slate-800" />
+          <div>
+            ${p.quote ? `<p class="font-bold text-white text-sm">“${escapeHtml(p.quote)}”</p>` : ''}
+            ${p.desc ? `<p class="text-xs text-slate-400 mt-1">${escapeHtml(p.desc)}</p>` : ''}
+          </div>
+          <div class="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-800">
+            <span><i class="fa-solid fa-location-dot text-emerald-400 mr-1"></i> ${escapeHtml(p.locationName || 'Unlabeled')}</span>
+            <span>${p.date}</span>
+          </div>
+          <div class="flex gap-2 pt-2">
+            <button onclick="shareViaWeb('${escapeHtml(p.quote)}', '${escapeHtml(p.desc)}')" class="flex-1 bg-slate-800 hover:bg-slate-700 py-1.5 rounded-lg text-xs text-slate-300 font-semibold">
+              <i class="fa-solid fa-share-nodes mr-1"></i> Share
+            </button>
+            <button onclick="shareWhatsApp('${escapeHtml(p.quote || p.desc)}')" class="px-3 bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 py-1.5 rounded-lg text-xs">
+              <i class="fa-brands fa-whatsapp"></i>
+            </button>
+            <button onclick="shareTelegram('${escapeHtml(p.quote || p.desc)}')" class="px-3 bg-cyan-600/30 hover:bg-cyan-600/50 text-cyan-300 py-1.5 rounded-lg text-xs">
+              <i class="fa-brands fa-telegram"></i>
+            </button>
+            <button onclick="deleteEntry('${DB.PHOTOS}', ${p.id})" class="px-3 bg-rose-600/20 hover:bg-rose-600/40 text-rose-400 py-1.5 rounded-lg text-xs">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function shareViaWeb(title, text) {
+      if (navigator.share) navigator.share({ title: title || 'Diary Memory', text: text || title });
+      else alert("Web Share API is not supported on this browser. Use WhatsApp/Telegram buttons.");
+    }
+    function shareWhatsApp(text) { window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank'); }
+    function shareTelegram(text) { window.open(`https://t.me/share/url?url=&text=${encodeURIComponent(text)}`, '_blank'); }
+
+    // ================= HABITS =================
+    function addHabit() {
+      const title = document.getElementById('newHabitTitle').value.trim();
+      if (!title) return;
+      const habits = load(DB.HABITS);
+      habits.push({ id: Date.now(), title, streak: 0, days: [false, false, false, false, false, false, false] });
+      save(DB.HABITS, habits);
+      document.getElementById('newHabitTitle').value = '';
+      renderHabits();
+    }
+
+    function toggleHabitDay(habitId, dayIndex) {
+      const habits = load(DB.HABITS);
+      const habit = habits.find(h => h.id === habitId);
+      if (habit) {
+        habit.days[dayIndex] = !habit.days[dayIndex];
+        habit.streak = habit.days.filter(Boolean).length;
+        if (habit.days[dayIndex]) confetti({ particleCount: 40, spread: 60, origin: { y: 0.8 } });
+        save(DB.HABITS, habits);
+        renderHabits();
+      }
+    }
+
+    function renderHabits() {
+      const habits = load(DB.HABITS);
+      const tbody = document.getElementById('habitsTableBody');
+      if (habits.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="10" class="py-6 text-center text-slate-500 text-xs">No habits added. Create your first habit above!</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = habits.map(h => `
+        <tr class="hover:bg-slate-800/30 transition">
+          <td class="py-3 px-4 font-semibold text-white">${escapeHtml(h.title)}</td>
+          <td class="py-3 px-4 text-center">
+            <span class="bg-orange-950 text-orange-400 border border-orange-800/60 px-2 py-0.5 rounded-full text-xs font-bold">🔥 ${h.streak}d</span>
+          </td>
+          ${h.days.map((checked, i) => `
+            <td class="py-3 px-4 text-center">
+              <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleHabitDay(${h.id}, ${i})" class="w-4 h-4 rounded text-orange-600 bg-slate-900 border-slate-700 cursor-pointer" />
+            </td>
+          `).join('')}
+          <td class="py-3 px-4 text-center">
+            <button onclick="deleteEntry('${DB.HABITS}', ${h.id})" class="text-slate-500 hover:text-rose-400 text-xs"><i class="fa-solid fa-trash"></i></button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // ================= WORKOUTS =================
+    function saveWorkout() {
+      const date = document.getElementById('workoutDate').value;
+      const exercise = document.getElementById('workoutExercise').value.trim();
+      const category = document.getElementById('workoutCategory').value;
+      const sets = document.getElementById('workoutSets').value || 0;
+      const reps = document.getElementById('workoutReps').value || 0;
+      const weight = document.getElementById('workoutWeight').value || 0;
+      const notes = document.getElementById('workoutNotes').value.trim();
+
+      if (!exercise) return alert("Please enter an exercise name.");
+
+      const workouts = load(DB.WORKOUTS);
+      workouts.unshift({ id: Date.now(), date, exercise, category, sets, reps, weight, notes });
+      save(DB.WORKOUTS, workouts);
+
+      document.getElementById('workoutExercise').value = '';
+      document.getElementById('workoutSets').value = '';
+      document.getElementById('workoutReps').value = '';
+      document.getElementById('workoutWeight').value = '';
+      document.getElementById('workoutNotes').value = '';
+
+      renderWorkouts();
+      renderCalendar();
+    }
+
+    function renderWorkouts() {
+      const workouts = load(DB.WORKOUTS);
+      const container = document.getElementById('workoutList');
+      if (workouts.length === 0) {
+        container.innerHTML = `<p class="text-xs text-slate-500 text-center py-8">No workout logs yet.</p>`;
+        return;
+      }
+      container.innerHTML = workouts.map(w => `
+        <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
+          <div>
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-xs font-bold text-cyan-400 uppercase tracking-wider">${w.category}</span>
+              <span class="text-xs text-slate-500">• ${w.date}</span>
+            </div>
+            <h4 class="font-bold text-white text-base">${escapeHtml(w.exercise)}</h4>
+            <p class="text-xs text-slate-300 mt-0.5">${w.sets} sets × ${w.reps} reps @ <span class="font-semibold text-white">${w.weight} kg</span></p>
+            ${w.notes ? `<p class="text-[11px] text-slate-500 italic mt-1">${escapeHtml(w.notes)}</p>` : ''}
+          </div>
+          <button onclick="deleteEntry('${DB.WORKOUTS}', ${w.id})" class="text-slate-500 hover:text-rose-400 text-xs p-2"><i class="fa-solid fa-trash"></i></button>
+        </div>
+      `).join('');
+    }
+
+    // ================= BIRTHDAYS =================
+    async function saveBirthdayPerson() {
+      const name = document.getElementById('bdayName').value.trim();
+      const relation = document.getElementById('bdayRelation').value;
+      const bdayDate = document.getElementById('bdayDate').value;
+      const giftIdeas = document.getElementById('bdayGiftIdeas').value.trim();
+      const notes = document.getElementById('bdayNotes').value.trim();
+      const fileInput = document.getElementById('bdayPhotoInput');
+
+      if (!name || !bdayDate) return alert("Please enter both a name and birthday.");
+
+      let photoBase64 = '';
+      if (fileInput.files && fileInput.files[0]) {
+        photoBase64 = await toBase64(fileInput.files[0]);
+      }
+
+      const list = load(DB.BIRTHDAYS);
+      list.push({ id: Date.now(), name, relation, bdayDate, giftIdeas, notes, photo: photoBase64 });
+      save(DB.BIRTHDAYS, list);
+
+      document.getElementById('bdayName').value = '';
+      document.getElementById('bdayGiftIdeas').value = '';
+      document.getElementById('bdayNotes').value = '';
+      document.getElementById('bdayPhotoInput').value = '';
+
+      renderBirthdays();
+      renderCalendar();
+    }
+
+    function renderBirthdays() {
+      const list = load(DB.BIRTHDAYS);
+      const container = document.getElementById('birthdayCardsGrid');
+      if (list.length === 0) {
+        container.innerHTML = `<div class="col-span-full text-center py-8 text-slate-500 text-xs">No contacts added yet.</div>`;
+        return;
+      }
+
+      container.innerHTML = list.map(item => {
+        const today = new Date();
+        const bdate = new Date(item.bdayDate);
+        let nextBday = new Date(today.getFullYear(), bdate.getMonth(), bdate.getDate());
+        if (nextBday < today) nextBday.setFullYear(today.getFullYear() + 1);
+        const diffDays = Math.ceil((nextBday - today) / (1000 * 60 * 60 * 24));
+
+        return `
+          <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 flex gap-4 items-start">
+            <div class="w-14 h-14 rounded-full bg-pink-950/60 border border-pink-700/50 flex items-center justify-center text-pink-400 font-bold overflow-hidden shrink-0">
+              ${item.photo ? `<img src="${item.photo}" class="w-full h-full object-cover" />` : `<i class="fa-solid fa-user text-xl"></i>`}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between">
+                <h4 class="font-bold text-white text-sm truncate">${escapeHtml(item.name)}</h4>
+                <span class="text-[10px] bg-pink-900/60 text-pink-300 px-2 py-0.5 rounded-full">${item.relation}</span>
+              </div>
+              <p class="text-xs text-pink-400 font-semibold mt-1">🎂 In ${diffDays} days (${item.bdayDate})</p>
+              ${item.giftIdeas ? `<p class="text-xs text-slate-400 mt-1">🎁 <em>${escapeHtml(item.giftIdeas)}</em></p>` : ''}
+              ${item.notes ? `<p class="text-xs text-slate-500 mt-1">${escapeHtml(item.notes)}</p>` : ''}
+              <div class="text-right mt-2">
+                <button onclick="deleteEntry('${DB.BIRTHDAYS}', ${item.id})" class="text-rose-400 hover:text-rose-300 text-xs"><i class="fa-solid fa-trash"></i></button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // ================= AUDIO RECORDER =================
+    async function toggleAudioRecording() {
+      const recordBtn = document.getElementById('recordBtn');
+      const recordIcon = document.getElementById('recordIcon');
+      const recordStatus = document.getElementById('recordStatus');
+
+      if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+          audioChunks = [];
+
+          mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+          mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            recordedAudioBase64 = await blobToBase64(audioBlob);
+            document.getElementById('audioPreview').src = recordedAudioBase64;
+            document.getElementById('audioPlaybackBox').classList.remove('hidden');
+          };
+
+          mediaRecorder.start();
+          recordSeconds = 0;
+          recordInterval = setInterval(() => {
+            recordSeconds++;
+            const mins = String(Math.floor(recordSeconds / 60)).padStart(2, '0');
+            const secs = String(recordSeconds % 60).padStart(2, '0');
+            document.getElementById('recordTimer').innerText = `${mins}:${secs}`;
+          }, 1000);
+
+          recordBtn.classList.replace('bg-rose-600', 'bg-red-700');
+          recordIcon.classList.replace('fa-microphone', 'fa-stop');
+          recordStatus.innerText = "Recording in progress... Click to stop.";
+        } catch (err) {
+          alert("Microphone permission was denied.");
+        }
+      } else {
+        mediaRecorder.stop();
+        clearInterval(recordInterval);
+        recordBtn.classList.replace('bg-red-700', 'bg-rose-600');
+        recordIcon.classList.replace('fa-stop', 'fa-microphone');
+        recordStatus.innerText = "Recording complete. Preview and save below.";
+      }
+    }
+
+    function saveAudioMemo() {
+      const title = document.getElementById('audioMemoTitle').value.trim() || 'Untitled Voice Memo';
+      if (!recordedAudioBase64) return;
+
+      const memos = load(DB.AUDIO);
+      memos.unshift({
+        id: Date.now(),
+        title,
+        date: new Date().toISOString().split('T')[0],
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        audio: recordedAudioBase64
+      });
+      save(DB.AUDIO, memos);
+
+      document.getElementById('audioMemoTitle').value = '';
+      document.getElementById('audioPlaybackBox').classList.add('hidden');
+      recordedAudioBase64 = null;
+      renderAudioMemos();
+    }
+
+    function renderAudioMemos() {
+      const memos = load(DB.AUDIO);
+      const container = document.getElementById('audioMemosList');
+      if (memos.length === 0) {
+        container.innerHTML = `<p class="text-xs text-slate-500 text-center py-8">No voice memos recorded yet.</p>`;
+        return;
+      }
+      container.innerHTML = memos.map(m => `
+        <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-bold text-white text-sm">${escapeHtml(m.title)}</span>
+            <span class="text-slate-500">${m.date} ${m.time}</span>
+          </div>
+          <audio controls src="${m.audio}" class="w-full h-8"></audio>
+          <div class="text-right">
+            <button onclick="deleteEntry('${DB.AUDIO}', ${m.id})" class="text-rose-400 hover:text-rose-300 text-xs"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // ================= CALENDAR =================
+    function changeMonth(delta) {
+      currentCalDate.setMonth(currentCalDate.getMonth() + delta);
+      renderCalendar();
+    }
+
+    function renderCalendar() {
+      const year = currentCalDate.getFullYear();
+      const month = currentCalDate.getMonth();
+      const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      document.getElementById('calendarMonthYear').innerText = `${monthNames[month]} ${year}`;
+
+      const firstDayIndex = new Date(year, month, 1).getDay();
+      const totalDays = new Date(year, month + 1, 0).getDate();
+      const grid = document.getElementById('calendarDaysGrid');
+      grid.innerHTML = '';
+
+      for (let i = 0; i < firstDayIndex; i++) {
+        grid.innerHTML += `<div class="p-4 rounded-xl bg-slate-950/20"></div>`;
+      }
+
+      const journals = load(DB.JOURNAL);
+      const workouts = load(DB.WORKOUTS);
+
+      for (let day = 1; day <= totalDays; day++) {
+        const dStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const hasJournal = journals.some(j => j.date === dStr);
+        const hasWorkout = workouts.some(w => w.date === dStr);
+
+        grid.innerHTML += `
+          <div onclick="selectCalendarDate('${dStr}')" class="p-3 bg-slate-950 border border-slate-800 hover:border-brand-500 rounded-xl flex flex-col items-center justify-between h-20 cursor-pointer transition">
+            <span class="text-xs font-semibold text-slate-300">${day}</span>
+            <div class="flex gap-1">
+              ${hasJournal ? `<span class="w-2 h-2 rounded-full bg-brand-500"></span>` : ''}
+              ${hasWorkout ? `<span class="w-2 h-2 rounded-full bg-cyan-400"></span>` : ''}
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    function selectCalendarDate(dateStr) {
+      const detailsBox = document.getElementById('calendarDayDetails');
+      const title = document.getElementById('selectedDateTitle');
+      const content = document.getElementById('selectedDateContent');
+
+      title.innerText = `Activity for ${dateStr}`;
+      detailsBox.classList.remove('hidden');
+
+      const journals = load(DB.JOURNAL).filter(j => j.date === dateStr);
+      const workouts = load(DB.WORKOUTS).filter(w => w.date === dateStr);
+
+      let html = '';
+      if (journals.length > 0) {
+        html += `<h4 class="font-bold text-brand-400">Journal Entries (${journals.length}):</h4>`;
+        journals.forEach(j => {
+          html += `<div class="p-3 bg-slate-950 rounded-lg border border-slate-800 mb-2"><strong>${escapeHtml(j.title)}</strong>: ${escapeHtml(j.content)}</div>`;
+        });
+      }
+      if (workouts.length > 0) {
+        html += `<h4 class="font-bold text-cyan-400 mt-3">Workouts (${workouts.length}):</h4>`;
+        workouts.forEach(w => {
+          html += `<div class="p-3 bg-slate-950 rounded-lg border border-slate-800 mb-2">${escapeHtml(w.exercise)} - ${w.sets}x${w.reps} @ ${w.weight}kg</div>`;
+        });
+      }
+      if (journals.length === 0 && workouts.length === 0) {
+        html = `<p class="text-slate-500 text-xs">No recorded logs on this day.</p>`;
+      }
+      content.innerHTML = html;
+    }
+
+    // ================= DELETE & LOCAL EXPORT / IMPORT =================
+    function deleteEntry(key, id) {
+      if (confirm("Are you sure you want to delete this item?")) {
+        const items = load(key).filter(i => i.id !== id);
+        save(key, items);
+        renderJournalList();
+        renderScrapbook();
+        renderPhotos();
+        renderHabits();
+        renderWorkouts();
+        renderBirthdays();
+        renderAudioMemos();
+        renderCalendar();
+      }
+    }
+
+    function exportData() {
+      const blob = new Blob([JSON.stringify(getFullBackupPayload(), null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Aegis_Diary_Backup_${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+    }
+
+    function importData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const d = JSON.parse(e.target.result);
+          restoreFromBackupObject(d);
+          alert("Backup restored successfully!");
+          location.reload();
+        } catch (err) {
+          alert("Invalid backup JSON file.");
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    // ================= UTILITIES =================
+    function toBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = error => reject(error);
+      });
+    }
+
+    function blobToBase64(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+      });
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/[&<>"']/g, m => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+      }[m]));
+    }
+  </script>
+</body>
+</html>
